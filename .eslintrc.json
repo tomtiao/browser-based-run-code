@@ -1,6 +1,13 @@
 {
+  "env": {
+    "browser": true
+  },
   "extends": [
     "eslint:recommended",
-    "react-app"
-  ]
+    "plugin:@typescript-eslint/recommended",
+    "plugin:react-hooks/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "root": true
 }
