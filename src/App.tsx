@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import { MessagePayload, SupportedLanguage, WorkerManager, supportedLanguageList } from "./worker";
+import { MessagePayload, SupportedLanguage, WorkerManager, languageCompileOptionMap, supportedLanguageMap } from "./worker";
 import Editor from "./components/Editor";
 import Preview from "./components/Preview";
 
 const workerManager = WorkerManager.instance();
+// preload worker
+workerManager.getWorker("cpp");
+workerManager.getWorker("python");
 
 type AppState =
   | "idle"
@@ -15,6 +18,7 @@ function App() {
   const id = useId();
 
   const [language, setLanguage] = useState<SupportedLanguage>("python");
+  const [compileOption, setCompileOption] = useState("-O0");
   const [worker, setWorker] = useState<Worker | null>(null);
   const [currentState, setCurrentState] = useState<AppState>("idle");
 
@@ -28,7 +32,7 @@ function App() {
     (async () => {
       let worker: Worker;
       try {
-        worker = await workerManager.getWorker(language);
+        worker = await workerManager.getWorker(supportedLanguageMap[language]);
       } catch (err) {
         // TODO: handle error
         console.error(err);
@@ -59,19 +63,23 @@ function App() {
       if (ev.data) {
         if (ev.data.err) {
           setCurrentState("idle");
-          console.error(ev.data.id, ev.data.err);
+          console.error();
+          console.error(ev.data.id, "\n", ev.data.err);
+          setOutput(ev.data.err.message);
           return;
         }
 
         if (ev.data.type === "application") {
-          setOutput(ev.data.value as string);
+          setOutput((output) => output + ev.data.value);
         } else {
           if (ev.data.value.stage) {
             switch (ev.data.value.stage) {
               case "running": {
-                setCurrentState("running")
+                setOutput("");
+                setCurrentState("running");
               } break;
               case "compilation": {
+                setOutput("");
                 setCurrentState("compiling");
               } break;
               case "exit": {
@@ -93,21 +101,28 @@ function App() {
     };
   }, [worker]);
 
+  const hasCompileOption = languageCompileOptionMap[language];
+
   const handleRunCode = useCallback(
     async (code: string) => {
+      if (!worker) {
+        console.warn("no worker available, will not run code");
+        return;
+      }
       setCurrentState("compiling");
       const message: MessagePayload = {
         id: id,
         type: "system",
         value: {
           code,
-          language
+          language,
+          compileOption: hasCompileOption ? compileOption : undefined
         },
         err: null
       };
-      worker!.postMessage(message);
+      worker.postMessage(message);
     },
-    [worker]
+    [worker, language, id, hasCompileOption, compileOption]
   );
 
   const handleLanguageChange = (newLanguage: string) => {
@@ -115,16 +130,20 @@ function App() {
     setLanguage(newLanguage as SupportedLanguage);
   };
 
+  const handleCompileOptionChange = (option: string) => {
+    setCompileOption(option);
+  };
+
   const currentStatus = (
     currentState === "loading"
-      ? "Loading..."
+      ? "加载中…"
       : (
         currentState === "compiling"
-          ? "Compiling..."
+          ? "正在编译…"
           : (
             currentState === "running"
-              ? "Running..."
-              : "Idle"
+              ? "运行中…"
+              : "空闲"
           )
       )
   );
@@ -134,18 +153,18 @@ function App() {
       <Editor
         key="editor"
         onRunCode={handleRunCode}
-        onLanguageChange={handleLanguageChange}
-        supportedLanguageList={supportedLanguageList}
         currentLanguage={language}
+        onLanguageChange={handleLanguageChange}
+        supportedLanguageMap={supportedLanguageMap}
         ready={currentState === "idle"}
+        hasCompileOption={hasCompileOption}
+        compileOption={compileOption}
+        onCompileOptionChange={handleCompileOptionChange}
       />
       <div className="status">
         {currentStatus}
       </div>
-      <div className="output">
-        {output}
-      </div>
-      {/* <Preview previewUrl={previewUrl}/> */}
+      <Preview output={output} />
     </>
   );
 }

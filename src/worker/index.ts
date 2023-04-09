@@ -53,12 +53,20 @@ type Loader = {
 
 export type SupportedLanguage =
   | "python"
-  | "cpp";
+  | "cpp"
+  | "c";
 
-export const supportedLanguageList: Readonly<SupportedLanguage[]> = [
-  "python",
-  "cpp"
-] as const;
+export const supportedLanguageMap = {
+  python: "python",
+  cpp: "cpp",
+  c: "cpp" // C use cpp worker
+} as const;
+
+export const languageCompileOptionMap = {
+  python: false,
+  cpp: true,
+  c: true
+} as const;
 
 export { WorkerManager };
 

@@ -1,7 +1,11 @@
+/* eslint-env node */
+/* eslint @typescript-eslint/no-var-requires: "off" */
+
 const path = require("path");
 
 const HTMLWebpackPlugin = require("html-webpack-plugin");
 const MonacoEditorWebpackPlugin = require("monaco-editor-webpack-plugin");
+const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = {
   mode: process.env.NODE_ENV,
@@ -40,7 +44,20 @@ module.exports = {
   },
   plugins: [
     new HTMLWebpackPlugin({ template: './index.html' }),
-    new MonacoEditorWebpackPlugin({ languages: [ "python", "cpp" ]})
+    new MonacoEditorWebpackPlugin({ languages: [ "python", "cpp" ]}),
+    new CopyPlugin({
+      patterns: [
+        { from: 'lib/pyodide', to: 'lib/pyodide' },
+        {
+          from: "lib/emception/brotli/brotli.wasm",
+          to: "brotli/brotli.wasm"
+        },
+        {
+          from: "lib/emception/wasm-package/wasm-package.wasm",
+          to: "wasm-package/wasm-package.wasm"
+        }
+      ]
+    })
   ],
   resolve: {
     alias: {

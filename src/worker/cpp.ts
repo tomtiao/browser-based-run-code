@@ -1,3 +1,4 @@
+/* eslint-disable */
 // @ts-nocheck
 import FileSystem from "emception/FileSystem.mjs";
 
@@ -122,121 +123,131 @@ class Emception {
         return result;
     };
 }
+/* eslint-enable */
 
 const emception = new Emception();
 globalThis.emception = emception;
+
+const createHandler = (language: "c" | "cpp", moduleName: string) => {
+    return async (ev: MessageEvent<MessagePayload<any>>) => {
+        if (ev.data && ev.data.value.code && ev.data.value.language === language) {
+            try {
+                await emception.fileSystem.writeFile(`/working/main.${language}`, ev.data.value.code);
+            } catch (error) {
+                const message: MessagePayload<any> = {
+                    id: ev.data.id,
+                    err: error as Error,
+                    value: null,
+                    type: "system"
+                };
+                globalThis.postMessage(message);
+    
+                return;
+            }
+    
+            const compilerEntry = language === "c" ? "emcc" : "em++";
+            const customOption = ev.data.value.compileOption ?? "";
+            const cmd = `${compilerEntry} ${customOption} main.${language} -sSTANDALONE_WASM -sWASM_BIGINT -sMODULARIZE -sEXPORT_NAME=${moduleName} -o main.js`;
+            console.log(cmd);
+    
+            const message: MessagePayload<any> = {
+                id: ev.data.id,
+                err: null,
+                value: {
+                    stage: "compilation"
+                },
+                type: "system"
+            };
+            globalThis.postMessage(message);
+    
+            const result = await emception.run(cmd);
+            if (result.returncode === 0) {
+                try {
+                    const javascriptFileBuffer = await emception.fileSystem.readFile("/working/main.js", { encoding: "utf8" });
+    
+                    // execute the output file so we can get globalThis[moduleName](Module)
+                    const javascriptUrl = URL.createObjectURL(new Blob([javascriptFileBuffer], { type: "application/javascript" }));
+                    importScripts(javascriptUrl);
+    
+                    const wasmBuffer = emception.fileSystem.readFile("/working/main.wasm");
+                    const Module = {
+                        instantiateWasm: function (imports, successCallback) {
+                            WebAssembly.instantiate(wasmBuffer, imports).then(function (output) {
+                                if (typeof WasmOffsetConverter != "undefined") {
+                                    wasmOffsetConverter = new WasmOffsetConverter(wasmBinary, output.module);
+                                }
+                                console.log('wasm instantiation succeeded');
+                                Module.testWasmInstantiationSucceeded = 1;
+                                successCallback(output.instance);
+                            }).catch(function (e) {
+                                console.log('wasm instantiation failed! ' + e);
+                            });
+                            return {};
+                        },
+                        print(msg: string) {
+                            const message: MessagePayload<any> = {
+                                id: ev.data.id,
+                                err: null,
+                                value: msg + "\n",
+                                type: "application"
+                            };
+                            globalThis.postMessage(message);
+                        },
+                        postRun() {
+                            URL.revokeObjectURL(javascriptUrl);
+                            const message: MessagePayload<any> = {
+                                id: ev.data.id,
+                                err: null,
+                                value: {
+                                    stage: "exit"
+                                },
+                                type: "system"
+                            };
+                            globalThis.postMessage(message);
+                        }
+                    };
+    
+                    const message: MessagePayload<any> = {
+                        id: ev.data.id,
+                        err: null,
+                        value: {
+                            stage: "running"
+                        },
+                        type: "system"
+                    };
+                    globalThis.postMessage(message);
+                    globalThis[moduleName](Module);
+    
+                } catch (error) {
+                    const message: MessagePayload<any> = {
+                        id: ev.data.id,
+                        err: error,
+                        value: null,
+                        type: "system"
+                    };
+                    globalThis.postMessage(message);
+                }
+            } else {
+                const message: MessagePayload<any> = {
+                    id: ev.data.id,
+                    err: new Error(result.stderr),
+                    value: null,
+                    type: "system"
+                };
+                globalThis.postMessage(message);
+            }
+        }
+    };
+}
+
+const handleCppRequest = createHandler("cpp", "createCppProgram");
+const handleCRequest = createHandler("c", "createCProgram");
 
 emception.init()
     .then(() => {
         globalThis.postMessage({ value: { ready: true, language: "cpp" }, id: "", type: "system" });
 
-        globalThis.addEventListener("message", async (ev: MessageEvent<MessagePayload<any>>) => {
-            if (ev.data && ev.data.value.code && ev.data.value.language === "cpp") {
-                try {
-                    await emception.fileSystem.writeFile("/working/main.cpp", ev.data.value.code);
-                } catch (error) {
-                    const message: MessagePayload<any> = {
-                        id: ev.data.id,
-                        err: error as Error,
-                        value: null,
-                        type: "system"
-                    };
-                    globalThis.postMessage(message);
-
-                    return;
-                }
-
-                const moduleName = "createCppProgram";
-                const cmd = `em++ -O2 main.cpp -sSTANDALONE_WASM -sWASM_BIGINT -sMODULARIZE -sEXPORT_NAME=${moduleName} -o main.js`;
-                console.log(cmd);
-
-                const message: MessagePayload<any> = {
-                    id: ev.data.id,
-                    err: null,
-                    value: {
-                        stage: "compilation"
-                    },
-                    type: "system"
-                };
-                globalThis.postMessage(message);
-
-                const result = await emception.run(cmd);
-                if (result.returncode === 0) {
-                    try {
-                        const javascriptFileBuffer = await emception.fileSystem.readFile("/working/main.js", { encoding: "utf8" });
-
-                        // execute the output file so we can get globalThis[moduleName](Module)
-                        const javascriptUrl = URL.createObjectURL(new Blob([javascriptFileBuffer], { type: "application/javascript" }));
-                        importScripts(javascriptUrl);
-
-                        const wasmBuffer = emception.fileSystem.readFile("/working/main.wasm");
-                        const Module = {
-                            instantiateWasm: function (imports, successCallback) {
-                                WebAssembly.instantiate(wasmBuffer, imports).then(function (output) {
-                                    if (typeof WasmOffsetConverter != "undefined") {
-                                        wasmOffsetConverter = new WasmOffsetConverter(wasmBinary, output.module);
-                                    }
-                                    console.log('wasm instantiation succeeded');
-                                    Module.testWasmInstantiationSucceeded = 1;
-                                    successCallback(output.instance);
-                                }).catch(function (e) {
-                                    console.log('wasm instantiation failed! ' + e);
-                                });
-                                return {};
-                            },
-                            print(msg: string) {
-                                const message: MessagePayload<any> = {
-                                    id: ev.data.id,
-                                    err: null,
-                                    value: msg,
-                                    type: "application"
-                                };
-                                globalThis.postMessage(message);
-                            },
-                            postRun() {
-                                URL.revokeObjectURL(javascriptUrl);
-                                const message: MessagePayload<any> = {
-                                    id: ev.data.id,
-                                    err: null,
-                                    value: {
-                                        stage: "exit"
-                                    },
-                                    type: "system"
-                                };
-                                globalThis.postMessage(message);
-                            }
-                        };
-
-                        const message: MessagePayload<any> = {
-                            id: ev.data.id,
-                            err: null,
-                            value: {
-                                stage: "running"
-                            },
-                            type: "system"
-                        };
-                        globalThis.postMessage(message);
-                        globalThis[moduleName](Module);
-
-                    } catch (error) {
-                        const message: MessagePayload<any> = {
-                            id: ev.data.id,
-                            err: error,
-                            value: null,
-                            type: "system"
-                        };
-                        globalThis.postMessage(message);
-                    }
-                } else {
-                    console.error(result);
-                    const message: MessagePayload<any> = {
-                        id: ev.data.id,
-                        err: new Error("compilation failed"),
-                        value: null,
-                        type: "system"
-                    };
-                    globalThis.postMessage(message);
-                }
-            }
-        });
+        // handle C++ AND C here
+        globalThis.addEventListener("message", handleCppRequest);
+        globalThis.addEventListener("message", handleCRequest);
     });

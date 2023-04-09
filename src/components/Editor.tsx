@@ -8,6 +8,8 @@ import {
   useEffect,
 } from "react";
 
+import { throttle } from "../utils";
+
 import "./Editor.css";
 
 const prefilled = {
@@ -17,6 +19,13 @@ const prefilled = {
     "",
     'int main() {',
     '    std::cout << "Hello World!\\n";',
+    "}"
+  ].join("\n"),
+  c: [
+    "#include <stdio.h>",
+    "",
+    'int main() {',
+    '    printf("Hello World!\\n");',
     "}"
   ].join("\n")
 } as const;
@@ -32,15 +41,21 @@ const options = {
 function Editor({
   onRunCode,
   onLanguageChange,
-  supportedLanguageList,
+  supportedLanguageMap,
   currentLanguage,
-  ready
+  ready,
+  hasCompileOption,
+  compileOption,
+  onCompileOptionChange
 }: {
   onRunCode: (code: string) => void;
   onLanguageChange: (newLanguage: string) => void;
-  supportedLanguageList: Readonly<string[]>;
+  supportedLanguageMap: Readonly<Record<string, string>>;
   currentLanguage: string;
   ready: boolean;
+  hasCompileOption: boolean;
+  compileOption: string;
+  onCompileOptionChange: (option: string) => void;
 }) {
   const [_initialized, setInitialized] = useState(false);
   const divRef = useRef<HTMLDivElement | null>(null);
@@ -59,7 +74,7 @@ function Editor({
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, [editorInstance])
+  }, [editorInstance]);
 
   const handleRefChange: React.LegacyRef<HTMLDivElement> = (node) => {
     divRef.current = node;
@@ -72,24 +87,49 @@ function Editor({
   };
 
   const handleLanguageChange: ChangeEventHandler<HTMLSelectElement> = (ev) => {
-    const editorModel = editorInstance!.getModel()!;
-    const language = ev.target.value;
-    monaco.editor.setModelLanguage(editorModel, language);
+    const languageType = ev.target.value;
     // TODO: check ev.target.value is SupportedLanguage
-    editorModel.setValue(prefilled[language as keyof typeof prefilled]);
+    editorInstance!.setValue(prefilled[languageType as keyof typeof prefilled]);
+    monaco.editor.setModelLanguage(editorInstance!.getModel()!, supportedLanguageMap[languageType]);
     onLanguageChange(ev.target.value);
+  };
+
+  const handleOptionInputChange: ChangeEventHandler<HTMLInputElement> = (ev) => {
+    onCompileOptionChange(ev.target.value);
   };
 
   return (
     <>
       <div ref={handleRefChange} className="editor" />
       <div className="control">
-        <select onChange={handleLanguageChange} value={currentLanguage}>
-          {supportedLanguageList.map((language) => (
-            <option value={language} key={language}>{language}</option>
-          ))}
-        </select>
-        <button onClick={handleClick} disabled={!ready}>Run</button>
+        <div className="language-select-wrapper">
+          <label htmlFor="language-select">语言：</label>
+          <select
+            name="language-select"
+            onChange={handleLanguageChange}
+            value={currentLanguage}
+            title="选择语言"
+          >
+            {Object.entries(supportedLanguageMap).map(([languageType]) => (
+              <option value={languageType} key={languageType}>{languageType}</option>
+            ))}
+          </select>
+        </div>
+        {
+          hasCompileOption
+          ? (
+            <div className="compiler-option-wrapper">
+              <label htmlFor="compiler-option">编译选项：</label>
+              <input
+                type="text"
+                name="compiler-option"
+                onChange={handleOptionInputChange}
+                value={compileOption}
+              />
+            </div>
+          ) : null
+        }
+        <button onClick={handleClick} disabled={!ready}>执行</button>
       </div>
     </>
   );
@@ -110,25 +150,6 @@ function useEditor(
   }
 
   return [editorRef.current];
-}
-
-const throttle = (fn: () => void, ms = 16) => {
-  let throttled = false;
-  return () => {
-    if (throttled) {
-      return;
-    }
-    throttled = true;
-    const now = performance.now();
-    requestAnimationFrame(function f(timestamp) {
-      if (timestamp - now > ms) {
-        throttled = false;
-        fn();
-      } else {
-        requestAnimationFrame(f);
-      }
-    });
-  }
 }
 
 export default Editor;
