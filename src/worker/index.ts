@@ -1,26 +1,42 @@
 class WorkerManager {
-  workers: Map<SupportedLanguage, Worker>;
+  #workers: Map<SupportedLanguage, Worker> = new Map();
 
-  constructor() {
-    this.workers = new Map();
-  }
+  #loadingModulePromises: Map<SupportedLanguage, Promise<Loader>> = new Map();
+  #workerReadyPromises: Map<SupportedLanguage, Promise<void>> = new Map();
 
   async getWorker(type: SupportedLanguage) {
-    if (this.workers.has(type)) {
-      return this.workers.get(type)!;
+    if (this.#workers.has(type)) {
+      return this.#workers.get(type)!;
+    }
+    
+    if (this.#loadingModulePromises.has(type)) {
+      return this.#loadWorker(type, await this.#loadingModulePromises.get(type)!);
     }
 
-    const workerLoader: Loader = await import(`./${type}-loader.ts`);
+    const modulePromise = import(`./${type}-loader.ts`);
+    this.#loadingModulePromises.set(type, modulePromise);
+    const workerLoader: Loader = await modulePromise;
 
-    this.workers.set(type, workerLoader.worker);
-    const data = await new Promise((resolve) => {
-      workerLoader.worker.addEventListener("message", (ev: MessageEvent<MessagePayload<any>>) => {
-        if (ev.data && ev.data.value && ev.data.value.ready) {
-          resolve(ev.data);
-        }
-      }, { once: true });
-    });
-    console.log((data as any).value.language, "loaded");
+    return this.#loadWorker(type, workerLoader);
+  }
+
+  async #loadWorker(type: SupportedLanguage, workerLoader: Loader) {
+    let workerReadyPromise;
+    if (this.#workerReadyPromises.has(type)) {
+      workerReadyPromise = this.#workerReadyPromises.get(type)!;
+    } else {
+      workerReadyPromise = new Promise<void>((resolve) => {
+        workerLoader.worker.addEventListener("message", (ev: MessageEvent<MessagePayload<any>>) => {
+          if (ev.data && ev.data.value && ev.data.value.ready) {
+            resolve();
+          }
+        }, { once: true });
+      });
+      this.#workerReadyPromises.set(type, workerReadyPromise);
+    }
+
+    await workerReadyPromise;
+    this.#workers.set(type, workerLoader.worker);
 
     return workerLoader.worker;
   }

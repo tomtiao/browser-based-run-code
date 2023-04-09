@@ -4,33 +4,39 @@ import Editor from "./components/Editor";
 import Preview from "./components/Preview";
 
 const workerManager = WorkerManager.instance();
-// preload cpp worker
-workerManager.getWorker("cpp");
+
+type AppState =
+  | "idle"
+  | "loading"
+  | "compiling"
+  | "running"
 
 function App() {
   const id = useId();
 
   const [language, setLanguage] = useState<SupportedLanguage>("python");
   const [worker, setWorker] = useState<Worker | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [currentState, setCurrentState] = useState<AppState>("idle");
 
   const [output, setOutput] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
 
   useEffect(() => {
-    setLoading(true);
+    setCurrentState("loading");
 
     let dropped = false;
     (async () => {
+      let worker: Worker;
       try {
-        const worker = await workerManager.getWorker(language)
-        setWorker(worker);
+        worker = await workerManager.getWorker(language);
       } catch (err) {
         // TODO: handle error
         console.error(err);
       } finally {
         if (!dropped) {
-          setLoading(false);
+          setWorker(worker!);
+          console.log(language, "loaded");
+          setCurrentState("idle");
         }
       }
     })();
@@ -51,20 +57,30 @@ function App() {
         return;
       }
       if (ev.data) {
-        setLoading(false);
-
         if (ev.data.err) {
+          setCurrentState("idle");
           console.error(ev.data.id, ev.data.err);
           return;
         }
 
-        setOutput("");
-
         if (ev.data.type === "application") {
           setOutput(ev.data.value as string);
         } else {
-          if (ev.data.value.isHTML) {
-            setPreviewUrl(ev.data.value.url);
+          if (ev.data.value.stage) {
+            switch (ev.data.value.stage) {
+              case "running": {
+                setCurrentState("running")
+              } break;
+              case "compilation": {
+                setCurrentState("compiling");
+              } break;
+              case "exit": {
+                setCurrentState("idle");
+              } break;
+              default: {
+                console.error(ev.data.value.stage, "not implemented");
+              } break;
+            }
           }
         }
       }
@@ -79,7 +95,7 @@ function App() {
 
   const handleRunCode = useCallback(
     async (code: string) => {
-      setLoading(true);
+      setCurrentState("compiling");
       const message: MessagePayload = {
         id: id,
         type: "system",
@@ -99,6 +115,20 @@ function App() {
     setLanguage(newLanguage as SupportedLanguage);
   };
 
+  const currentStatus = (
+    currentState === "loading"
+      ? "Loading..."
+      : (
+        currentState === "compiling"
+          ? "Compiling..."
+          : (
+            currentState === "running"
+              ? "Running..."
+              : "Idle"
+          )
+      )
+  );
+
   return (
     <>
       <Editor
@@ -107,10 +137,10 @@ function App() {
         onLanguageChange={handleLanguageChange}
         supportedLanguageList={supportedLanguageList}
         currentLanguage={language}
-        loading={loading}
+        ready={currentState === "idle"}
       />
       <div className="status">
-        {loading ? "Loading..." : "Idle"}
+        {currentStatus}
       </div>
       <div className="output">
         {output}

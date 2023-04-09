@@ -15,8 +15,8 @@ class PyodideLoader {
           this.stdout = msg;
         }
       });
-      await PyodideLoader.pyodide.loadPackage("micropip");
-      const micropip = PyodideLoader.pyodide.pyimport("micropip");
+      // await PyodideLoader.pyodide.loadPackage("micropip");
+      // const micropip = PyodideLoader.pyodide.pyimport("micropip");
     }
     return PyodideLoader.pyodide;
   }
@@ -24,18 +24,40 @@ class PyodideLoader {
 
 PyodideLoader.getPyodide().then(async (pyodide) => {
   globalThis.postMessage({ value: { ready: true, language: "python" }, id: "", type: "system" });
+
   globalThis.addEventListener("message", async (ev: MessageEvent<MessagePayload<any>>) => {
     if (ev.data && ev.data.value.code && ev.data.value.language === "python") {
       try {
+        const preMessage: MessagePayload<any> = {
+          id: ev.data.id,
+          err: null,
+          value: {
+            stage: "running"
+          },
+          type: "system"
+        };
+        globalThis.postMessage(preMessage);
+      
         await pyodide.runPythonAsync(ev.data.value.code);
         const v = PyodideLoader.stdout;
-        const message: MessagePayload<any> = {
+        const postSysMessage = {
+          id: ev.data.id,
+          err: null,
+          value: {
+            stage: "exit"
+          },
+          type: "system"
+        };
+        globalThis.postMessage(postSysMessage);
+
+        const postAppMessage = {
           id: ev.data.id,
           err: null,
           value: v,
           type: "application"
         };
-        globalThis.postMessage(message);
+        globalThis.postMessage(postAppMessage);
+
       } catch (error) {
         const message: MessagePayload<any> = {
           id: ev.data.id,

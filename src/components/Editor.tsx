@@ -5,6 +5,7 @@ import {
   type ChangeEventHandler,
   useRef,
   useState,
+  useEffect,
 } from "react";
 
 import "./Editor.css";
@@ -33,17 +34,32 @@ function Editor({
   onLanguageChange,
   supportedLanguageList,
   currentLanguage,
-  loading
+  ready
 }: {
   onRunCode: (code: string) => void;
   onLanguageChange: (newLanguage: string) => void;
   supportedLanguageList: Readonly<string[]>;
   currentLanguage: string;
-  loading: boolean;
+  ready: boolean;
 }) {
   const [_initialized, setInitialized] = useState(false);
   const divRef = useRef<HTMLDivElement | null>(null);
   const [editorInstance] = useEditor(divRef, options);
+
+  useEffect(() => {
+    if (!editorInstance) {
+      return;
+    }
+
+    const handleResize = throttle(() => {
+      editorInstance.layout();
+    });
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [editorInstance])
 
   const handleRefChange: React.LegacyRef<HTMLDivElement> = (node) => {
     divRef.current = node;
@@ -73,7 +89,7 @@ function Editor({
             <option value={language} key={language}>{language}</option>
           ))}
         </select>
-        <button onClick={handleClick} disabled={loading}>Run</button>
+        <button onClick={handleClick} disabled={!ready}>Run</button>
       </div>
     </>
   );
@@ -94,6 +110,25 @@ function useEditor(
   }
 
   return [editorRef.current];
+}
+
+const throttle = (fn: () => void, ms = 16) => {
+  let throttled = false;
+  return () => {
+    if (throttled) {
+      return;
+    }
+    throttled = true;
+    const now = performance.now();
+    requestAnimationFrame(function f(timestamp) {
+      if (timestamp - now > ms) {
+        throttled = false;
+        fn();
+      } else {
+        requestAnimationFrame(f);
+      }
+    });
+  }
 }
 
 export default Editor;
