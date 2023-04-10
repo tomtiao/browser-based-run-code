@@ -31,9 +31,9 @@ const Preview = ({
             return;
         }
 
-        const handleResize = throttle(() => {
+        const handleResize = () => {
             fitAddonInstance.fit()
-        });
+        };
         window.addEventListener("resize", handleResize);
 
         return () => {

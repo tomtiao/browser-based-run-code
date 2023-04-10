@@ -1,18 +1,27 @@
+import { MessagePayload } from ".";
+import { RunProgramMessage } from "./cpp-loader";
+
+// I hate this
 /* eslint-disable */
-// @ts-nocheck
+// @ts-ignore
 import FileSystem from "emception/FileSystem.mjs";
 
+// @ts-ignore
 import LlvmBoxProcess from "emception/LlvmBoxProcess.mjs";
+// @ts-ignore
 import BinaryenBoxProcess from "emception/BinaryenBoxProcess.mjs";
+// @ts-ignore
 import Python3Process from "emception/Python3Process.mjs";
+// @ts-ignore
 import NodeProcess from "emception/QuickNodeProcess.mjs";
 
+// @ts-ignore
 import root_pack from "emception/root_pack.mjs";
+// @ts-ignore
 import lazy_cache from "emception/lazy-cache/index.mjs";
-import { MessagePayload } from ".";
 
 class Emception {
-    fileSystem = null;
+    fileSystem: FileSystem = null;
     tools = {};
 
     async init() {
@@ -34,6 +43,7 @@ class Emception {
 
         const processConfig = {
             FS: fileSystem.FS,
+            // @ts-ignore
             onrunprocess: (...args) => this._run_process(...args),
         };
 
@@ -47,6 +57,7 @@ class Emception {
         this.tools = tools;
 
         for (let tool in tools) {
+            // @ts-ignore
             await tools[tool];
         }
     }
@@ -56,7 +67,12 @@ class Emception {
     onstdout = () => { };
     onstderr = () => { };
 
+    // @ts-ignore
     run(...args) {
+        if (this.fileSystem!.exists("/emscripten/cache/cache.lock")) {
+            this.fileSystem!.unlink("/emscripten/cache/cache.lock");
+        }
+
         if (args.length == 1) args = args[0].split(/ +/);
         args = [
             "/usr/bin/python",
@@ -64,21 +80,28 @@ class Emception {
             `/emscripten/${args[0]}.py`,
             ...args.slice(1)
         ];
+        // @ts-ignore
         return this.tools["main-python"].exec(args, {
+            // @ts-ignore
             print: (...args) => this.onstdout(...args),
+            // @ts-ignore
             printErr: (...args) => this.onstderr(...args),
             cwd: "/working",
             path: ["/emscripten"],
         })
     };
 
+    // @ts-ignore
     _run_process(argv, opts = {}) {
+        // @ts-ignore
         this.onprocessstart(argv);
         const result = this._run_process_impl(argv, opts);
+        // @ts-ignore
         this.onprocessend(result);
         return result;
     }
 
+    // @ts-ignore
     _run_process_impl(argv, opts = {}) {
         const in_emscripten = argv[0].match(/\/emscripten\/(.+)(\.py)?/)
         if (in_emscripten) {
@@ -86,10 +109,12 @@ class Emception {
                 "/usr/bin/python",
                 "-E",
                 `/emscripten/${in_emscripten[1]}.py`,
+                // @ts-ignore
                 ...args.slice(1)
             ];
         }
 
+        // @ts-ignore
         if (!this.fileSystem.exists(argv[0])) {
             const result = {
                 returncode: 1,
@@ -99,6 +124,7 @@ class Emception {
             return result;
         }
 
+        // @ts-ignore
         const tool_info = argv[0] === "/usr/bin/python" ? "python" : this.fileSystem.readFile(argv[0], { encoding: "utf8" });
         const [tool_name, ...extra_args] = tool_info.split(";")
 
@@ -113,28 +139,35 @@ class Emception {
 
         argv = [...extra_args, ...argv];
 
+        // @ts-ignore
         const tool = this.tools[tool_name];
         const result = tool.exec(argv, {
             ...opts,
+            // @ts-ignore
             cwd: opts.cwd || "/",
             path: ["/emscripten"]
         });
+        // @ts-ignore
         this.fileSystem.push();
         return result;
     };
 }
-/* eslint-enable */
 
 const emception = new Emception();
+// @ts-ignore
 globalThis.emception = emception;
+/* eslint-enable */
 
 const createHandler = (language: "c" | "cpp", moduleName: string) => {
-    return async (ev: MessageEvent<MessagePayload<any>>) => {
-        if (ev.data && ev.data.value.code && ev.data.value.language === language) {
+    return async (ev: MessageEvent<MessagePayload<{ language: string; code: string; compileOption?: string; }>>) => {
+        if (ev.data && ev.data.type === "system" && ev.data.value && ev.data.value.code && ev.data.value.language === language) {
             try {
+                /* eslint-disable */
+                // @ts-ignore
                 await emception.fileSystem.writeFile(`/working/main.${language}`, ev.data.value.code);
+                /* eslint-enable */
             } catch (error) {
-                const message: MessagePayload<any> = {
+                const message: MessagePayload<null> = {
                     id: ev.data.id,
                     err: error as Error,
                     value: null,
@@ -147,67 +180,86 @@ const createHandler = (language: "c" | "cpp", moduleName: string) => {
     
             const compilerEntry = language === "c" ? "emcc" : "em++";
             const customOption = ev.data.value.compileOption ?? "";
-            const cmd = `${compilerEntry} ${customOption} main.${language} -sSTANDALONE_WASM -sWASM_BIGINT -sMODULARIZE -sEXPORT_NAME=${moduleName} -o main.js`;
+            const cmd = `${compilerEntry} ${customOption} main.${language} -sMODULARIZE -sEXPORT_NAME=${moduleName} -o main.js`;
             console.log(cmd);
     
-            const message: MessagePayload<any> = {
-                id: ev.data.id,
-                err: null,
-                value: {
-                    stage: "compilation"
-                },
-                type: "system"
-            };
-            globalThis.postMessage(message);
+            {
+                const message: MessagePayload<{ stage: "compilation"; }> = {
+                    id: ev.data.id,
+                    err: null,
+                    value: {
+                        stage: "compilation"
+                    },
+                    type: "system"
+                };
+                globalThis.postMessage(message);
+            }
     
-            const result = await emception.run(cmd);
-            if (result.returncode === 0) {
-                try {
-                    const javascriptFileBuffer = await emception.fileSystem.readFile("/working/main.js", { encoding: "utf8" });
-    
-                    // execute the output file so we can get globalThis[moduleName](Module)
-                    const javascriptUrl = URL.createObjectURL(new Blob([javascriptFileBuffer], { type: "application/javascript" }));
-                    importScripts(javascriptUrl);
-    
-                    const wasmBuffer = emception.fileSystem.readFile("/working/main.wasm");
-                    const Module = {
-                        instantiateWasm: function (imports, successCallback) {
-                            WebAssembly.instantiate(wasmBuffer, imports).then(function (output) {
-                                if (typeof WasmOffsetConverter != "undefined") {
-                                    wasmOffsetConverter = new WasmOffsetConverter(wasmBinary, output.module);
-                                }
-                                console.log('wasm instantiation succeeded');
-                                Module.testWasmInstantiationSucceeded = 1;
-                                successCallback(output.instance);
-                            }).catch(function (e) {
-                                console.log('wasm instantiation failed! ' + e);
-                            });
-                            return {};
-                        },
-                        print(msg: string) {
-                            const message: MessagePayload<any> = {
-                                id: ev.data.id,
-                                err: null,
-                                value: msg + "\n",
-                                type: "application"
-                            };
-                            globalThis.postMessage(message);
-                        },
-                        postRun() {
-                            URL.revokeObjectURL(javascriptUrl);
-                            const message: MessagePayload<any> = {
-                                id: ev.data.id,
-                                err: null,
-                                value: {
-                                    stage: "exit"
-                                },
-                                type: "system"
-                            };
-                            globalThis.postMessage(message);
-                        }
+            {
+                const result = await emception.run(cmd);
+                if (result.returncode !== 0) {
+                    const message: MessagePayload<null> = {
+                        id: ev.data.id,
+                        err: new Error(result.stderr),
+                        value: null,
+                        type: "system"
                     };
+                    globalThis.postMessage(message);
     
-                    const message: MessagePayload<any> = {
+                    return;
+                }
+            }
+
+            try {
+                const programExecutor = new Worker(
+                    new URL("./cpp-program-executor.ts", import.meta.url),
+                    { type: "module" }
+                );
+
+                {
+                    /* eslint-disable */
+                    // @ts-ignore
+                    const javascriptFile: Uint8Array = await emception.fileSystem.readFile("/working/main.js");
+                    /* eslint-enable */
+    
+                    const loadJsMessage: MessagePayload<RunProgramMessage<Uint8Array>> = {
+                        id: ev.data.id,
+                        err: null,
+                        value: {
+                            type: "load",
+                            action: {
+                                file_type: "js",
+                                data: javascriptFile
+                            }
+                        },
+                        type: "system"
+                    };
+                    programExecutor.postMessage(loadJsMessage, [javascriptFile.buffer]);
+                }
+
+                {
+                    /* eslint-disable */
+                    // @ts-ignore
+                    const wasmBuffer: Uint8Array = await emception.fileSystem.readFile("/working/main.wasm");
+                    /* eslint-enable */
+
+                    const loadWasmMessage: MessagePayload<RunProgramMessage<Uint8Array>> = {
+                        id: ev.data.id,
+                        err: null,
+                        value: {
+                            type: "load",
+                            action: {
+                                file_type: "wasm",
+                                data: wasmBuffer
+                            }
+                        },
+                        type: "system"
+                    };
+                    programExecutor.postMessage(loadWasmMessage, [wasmBuffer.buffer]);
+                }
+
+                {
+                    const message: MessagePayload<{ stage: "running" }> = {
                         id: ev.data.id,
                         err: null,
                         value: {
@@ -216,21 +268,30 @@ const createHandler = (language: "c" | "cpp", moduleName: string) => {
                         type: "system"
                     };
                     globalThis.postMessage(message);
-                    globalThis[moduleName](Module);
-    
-                } catch (error) {
-                    const message: MessagePayload<any> = {
+                }
+
+                programExecutor.addEventListener("message", handleExecutorPrint);
+                programExecutor.addEventListener("message", handleExecutorExit);
+
+                {
+                    const executeMessage: MessagePayload<RunProgramMessage> = {
                         id: ev.data.id,
-                        err: error,
-                        value: null,
+                        err: null,
+                        value: {
+                            type: "execute",
+                            action: {
+                                moduleName
+                            }
+                        },
                         type: "system"
                     };
-                    globalThis.postMessage(message);
+                    // send execute here
+                    programExecutor.postMessage(executeMessage);
                 }
-            } else {
-                const message: MessagePayload<any> = {
+            } catch (error) {
+                const message: MessagePayload<null> = {
                     id: ev.data.id,
-                    err: new Error(result.stderr),
+                    err: error as Error,
                     value: null,
                     type: "system"
                 };
@@ -242,6 +303,20 @@ const createHandler = (language: "c" | "cpp", moduleName: string) => {
 
 const handleCppRequest = createHandler("cpp", "createCppProgram");
 const handleCRequest = createHandler("c", "createCProgram");
+
+// we just do delegation
+function handleExecutorPrint(ev: MessageEvent<MessagePayload<string>>) {
+    if (ev.data && ev.data.type === "application") {
+        globalThis.postMessage(ev.data);
+    }
+}
+
+// we just do delegation
+function handleExecutorExit(ev: MessageEvent<MessagePayload<{ stage: "exit" }>>) {
+    if (ev.data && ev.data.type === "system") {
+        globalThis.postMessage(ev.data);
+    }
+}
 
 emception.init()
     .then(() => {

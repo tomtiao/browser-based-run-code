@@ -16,3 +16,7 @@ export const throttle = (fn: () => void, ms = 16) => {
         });
     }
 };
+
+export const globalWorkerErrorHandler = (ev: Event) => {
+    console.error(ev);
+};

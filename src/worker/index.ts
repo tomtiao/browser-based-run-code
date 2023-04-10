@@ -1,3 +1,5 @@
+import { globalWorkerErrorHandler } from "../utils";
+
 class WorkerManager {
   #workers: Map<SupportedLanguage, Worker> = new Map();
 
@@ -21,13 +23,18 @@ class WorkerManager {
   }
 
   async #loadWorker(type: SupportedLanguage, workerLoader: Loader) {
+    // TODO
+    workerLoader.worker.addEventListener("error", globalWorkerErrorHandler);
+
     let workerReadyPromise;
     if (this.#workerReadyPromises.has(type)) {
       workerReadyPromise = this.#workerReadyPromises.get(type)!;
     } else {
       workerReadyPromise = new Promise<void>((resolve) => {
-        workerLoader.worker.addEventListener("message", (ev: MessageEvent<MessagePayload<any>>) => {
-          if (ev.data && ev.data.value && ev.data.value.ready) {
+
+        workerLoader.worker.addEventListener("message", (ev: MessageEvent<MessagePayload<{ ready: boolean; }>>) => {
+          if (ev.data && ev.data.type === "system" && ev.data.value && ev.data.value.ready) {
+            this.#passInputBuffer(workerLoader.worker);
             resolve();
           }
         }, { once: true });
@@ -36,19 +43,74 @@ class WorkerManager {
     }
 
     await workerReadyPromise;
+
     this.#workers.set(type, workerLoader.worker);
 
     return workerLoader.worker;
+  }
+
+  #passInputBuffer(worker: Worker) {
+    const inputBuffer = new SharedArrayBuffer(WorkerManager.MAX_INPUT_BUFFER_SIZE);
+    const typedArray = new Int32Array(inputBuffer);
+
+    this.#workerInputBuffer.set(worker, typedArray);
+
+    const message: MessagePayload<{ type: "stdin_init", data: SharedArrayBuffer }> = {
+      id: "",
+      err: null,
+      value: {
+        type: "stdin_init",
+        data: inputBuffer
+      },
+      type: "system"
+    };
+    worker.postMessage(message);
+  }
+
+  async destroyWorker(type: SupportedLanguage) {
+    if (this.#workers.has(type)) {
+      const loader = await this.#loadingModulePromises.get(type)!;
+      this.#workerInputBuffer.delete(loader.worker);
+      this.#workers.delete(type);
+      this.#workerReadyPromises.delete(type);
+
+      loader.destroyWorker();
+    }
   }
 
   static #instance: WorkerManager;
   static instance() {
     return (this.#instance ?? (this.#instance = new WorkerManager()));
   }
+
+  static readonly MAX_INPUT_BUFFER_SIZE = 1024;
+  #workerInputBuffer: WeakMap<Worker, Int32Array> = new WeakMap();
+  
+  responseWorkerInput(worker: Worker, inputStr: string) {
+    const typedArray = this.#workerInputBuffer.get(worker)!;
+
+    // a utf8 char is at max 4 bytes
+    const inputStrSlice = inputStr.slice(0, ((WorkerManager.MAX_INPUT_BUFFER_SIZE - 1) / 3) | 0);
+    
+    // Int32Array的第一个位置存放输入长度`x`（小于`MAX_INPUT_BUFFER_SIZE-1`），
+    // 后`x`项是字符串数据，剩余项未定义
+
+    typedArray[0] = inputStrSlice.length;
+    typedArray.set(new TextEncoder().encode(inputStrSlice), 1);
+
+    // wake up the thread
+    Atomics.notify(typedArray, 0);
+  }
 }
 
+export const workerManager = WorkerManager.instance();
+// preload worker
+workerManager.getWorker("cpp");
+workerManager.getWorker("python");
+
 type Loader = {
-  worker: Worker
+  worker: Worker,
+  destroyWorker: () => void;
 }
 
 export type SupportedLanguage =
@@ -67,8 +129,6 @@ export const languageCompileOptionMap = {
   cpp: true,
   c: true
 } as const;
-
-export { WorkerManager };
 
 type MessagePayloadType =
   | "system"

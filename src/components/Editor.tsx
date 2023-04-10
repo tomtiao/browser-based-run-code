@@ -4,9 +4,10 @@ import {
   type MouseEventHandler,
   type ChangeEventHandler,
   useRef,
-  useState,
   useEffect,
 } from "react";
+
+import { Button, Dropdown, DropdownProps, Input, Label, Option, Body1Stronger } from "@fluentui/react-components";
 
 import { throttle } from "../utils";
 
@@ -57,7 +58,6 @@ function Editor({
   compileOption: string;
   onCompileOptionChange: (option: string) => void;
 }) {
-  const [_initialized, setInitialized] = useState(false);
   const divRef = useRef<HTMLDivElement | null>(null);
   const [editorInstance] = useEditor(divRef, options);
 
@@ -66,9 +66,9 @@ function Editor({
       return;
     }
 
-    const handleResize = throttle(() => {
+    const handleResize = () => {
       editorInstance.layout();
-    });
+    };
     window.addEventListener("resize", handleResize);
 
     return () => {
@@ -76,62 +76,71 @@ function Editor({
     };
   }, [editorInstance]);
 
-  const handleRefChange: React.LegacyRef<HTMLDivElement> = (node) => {
-    divRef.current = node;
-    setInitialized(true);
-  };
-
-  const handleClick: MouseEventHandler<HTMLButtonElement> = (_ev) => {
+  const handleClick: MouseEventHandler<HTMLButtonElement> = () => {
     const code = editorInstance!.getValue();
     onRunCode(code);
   };
 
-  const handleLanguageChange: ChangeEventHandler<HTMLSelectElement> = (ev) => {
-    const languageType = ev.target.value;
+  const handleLanguageChange: DropdownProps['onOptionSelect'] = (ev, data) => {
+    const languageType = data.optionValue!;
     // TODO: check ev.target.value is SupportedLanguage
     editorInstance!.setValue(prefilled[languageType as keyof typeof prefilled]);
     monaco.editor.setModelLanguage(editorInstance!.getModel()!, supportedLanguageMap[languageType]);
-    onLanguageChange(ev.target.value);
+    onLanguageChange(languageType);
   };
 
   const handleOptionInputChange: ChangeEventHandler<HTMLInputElement> = (ev) => {
     onCompileOptionChange(ev.target.value);
   };
 
+  const runButtonString = (
+    hasCompileOption
+    ? "编译并执行"
+    : "执行"
+  );
+
   return (
-    <>
-      <div ref={handleRefChange} className="editor" />
+    <div className="editor-wrapper">
       <div className="control">
-        <div className="language-select-wrapper">
-          <label htmlFor="language-select">语言：</label>
-          <select
-            name="language-select"
-            onChange={handleLanguageChange}
-            value={currentLanguage}
-            title="选择语言"
-          >
-            {Object.entries(supportedLanguageMap).map(([languageType]) => (
-              <option value={languageType} key={languageType}>{languageType}</option>
-            ))}
-          </select>
+        <div className="line">
+          <div className="language-select-wrapper">
+            <Label htmlFor="language-select" className="option-label">
+              <Body1Stronger>语言</Body1Stronger>
+            </Label>
+            <Dropdown
+              name="language-select"
+              onOptionSelect={handleLanguageChange}
+              value={currentLanguage}
+              title="选择语言"
+            >
+              {Object.entries(supportedLanguageMap).map(([languageType]) => (
+                <Option value={languageType} key={languageType}>{languageType}</Option>
+              ))}
+            </Dropdown>
+          </div>
         </div>
         {
           hasCompileOption
           ? (
-            <div className="compiler-option-wrapper">
-              <label htmlFor="compiler-option">编译选项：</label>
-              <input
-                type="text"
-                name="compiler-option"
-                onChange={handleOptionInputChange}
-                value={compileOption}
-              />
+            <div className="line">
+              <div className="compiler-option-wrapper">
+                <Label htmlFor="compiler-option-input" className="option-label">
+                  <Body1Stronger>编译选项</Body1Stronger>
+                </Label>
+                <Input
+                  type="text"
+                  id="compiler-option-input"
+                  onChange={handleOptionInputChange}
+                  value={compileOption}
+                />
+              </div>
             </div>
           ) : null
         }
-        <button onClick={handleClick} disabled={!ready}>执行</button>
+        <Button onClick={handleClick} appearance="primary" disabled={!ready}>{runButtonString}</Button>
       </div>
-    </>
+      <div ref={divRef} className="editor" />
+    </div>
   );
 }
 

@@ -1,4 +1,13 @@
-.text-output {
+.preview {
+    box-sizing: border-box;
+
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     width: 100%;
-    height: 25vh;
+    height: 100%;
+}
+
+.text-output {
+    flex: 1 1 0%;
 }

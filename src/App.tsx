@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import { MessagePayload, SupportedLanguage, WorkerManager, languageCompileOptionMap, supportedLanguageMap } from "./worker";
+import { Spinner, Body1Stronger } from "@fluentui/react-components";
+
+import { MessagePayload, SupportedLanguage, languageCompileOptionMap, supportedLanguageMap } from "./worker";
 import Editor from "./components/Editor";
 import Preview from "./components/Preview";
 
-const workerManager = WorkerManager.instance();
-// preload worker
-workerManager.getWorker("cpp");
-workerManager.getWorker("python");
+import { workerManager } from "./worker";
+
+import "./App.css";
 
 type AppState =
   | "idle"
@@ -63,13 +64,14 @@ function App() {
       if (ev.data) {
         if (ev.data.err) {
           setCurrentState("idle");
-          console.error();
           console.error(ev.data.id, "\n", ev.data.err);
-          setOutput(ev.data.err.message);
+          const errMessage = ev.data.err.message;
+          setOutput((output) => output + errMessage);
           return;
         }
 
         if (ev.data.type === "application") {
+          console.log(ev.data.value)
           setOutput((output) => output + ev.data.value);
         } else {
           if (ev.data.value.stage) {
@@ -87,6 +89,14 @@ function App() {
               } break;
               default: {
                 console.error(ev.data.value.stage, "not implemented");
+              } break;
+            }
+          } else if (ev.data.value.type) {
+            switch (ev.data.value.type) {
+              case "stdin_request": {
+                const s = prompt() ?? "";
+
+                workerManager.responseWorkerInput(worker, s);
               } break;
             }
           }
@@ -126,6 +136,9 @@ function App() {
   );
 
   const handleLanguageChange = (newLanguage: string) => {
+    // if (worker) {
+    //   workerManager.destroyWorker(language);
+    // }
     // TODO: check newLanguage is SupportedLanguage
     setLanguage(newLanguage as SupportedLanguage);
   };
@@ -149,23 +162,43 @@ function App() {
   );
 
   return (
-    <>
-      <Editor
-        key="editor"
-        onRunCode={handleRunCode}
-        currentLanguage={language}
-        onLanguageChange={handleLanguageChange}
-        supportedLanguageMap={supportedLanguageMap}
-        ready={currentState === "idle"}
-        hasCompileOption={hasCompileOption}
-        compileOption={compileOption}
-        onCompileOptionChange={handleCompileOptionChange}
-      />
-      <div className="status">
-        {currentStatus}
-      </div>
-      <Preview output={output} />
-    </>
+    <div className="app-wrapper">
+      <nav className="navigation">
+        <span>应用执行</span>
+      </nav>
+      <main className="content-wrapper">
+        <div className="editor-status">
+          <div className="editor-container">
+            <Editor
+              key="editor"
+              onRunCode={handleRunCode}
+              currentLanguage={language}
+              onLanguageChange={handleLanguageChange}
+              supportedLanguageMap={supportedLanguageMap}
+              ready={currentState === "idle"}
+              hasCompileOption={hasCompileOption}
+              compileOption={compileOption}
+              onCompileOptionChange={handleCompileOptionChange}
+            />
+          </div>
+          <div className="status">
+            {
+              currentState === "idle"
+              ? <Body1Stronger align="center">{currentStatus}</Body1Stronger>
+              : (
+                <Spinner appearance="primary" label={currentStatus} />
+              )
+            }
+          </div>
+        </div>
+        <div className="preview-wrapper">
+          <Preview output={output} />
+        </div>
+        <div className="image-preview">
+          
+        </div>
+      </main>
+    </div>
   );
 }
 
