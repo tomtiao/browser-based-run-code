@@ -1,4 +1,5 @@
-import { type PyodideInterface, } from "pyodide";
+import { type PyodideInterface } from "pyodide";
+import { type PyBufferView, type PyBuffer } from "pyodide/ffi";
 import { MessagePayload } from ".";
 
 class PyodideLoader {
@@ -10,16 +11,66 @@ class PyodideLoader {
       PyodideLoader.pyodide = await loadPyodide({
         indexURL: "./lib/pyodide",
       });
-      await PyodideLoader.pyodide.loadPackage("micropip");
-      const micropip = PyodideLoader.pyodide.pyimport("micropip");
-      await micropip.install("matplotlib");
     }
     return PyodideLoader.pyodide;
   }
 }
 
+const globalRenderResultVar = "plot_render_result";
+const renderImageFormat = "png";
+const patchMatplotlibShow = `import os
+import base64
+from io import BytesIO
+
+# before importing matplotlib
+# to avoid the wasm backend (which needs "js.document", not available in worker)
+os.environ["MPLBACKEND"] = "AGG"
+
+import matplotlib.pyplot
+
+_old_show = matplotlib.pyplot.show
+assert _old_show, "matplotlib.pyplot.show"
+
+${globalRenderResultVar} = b''
+def show(*, block=None):
+    buf = BytesIO()
+    matplotlib.pyplot.savefig(buf, format="${renderImageFormat}")
+    buf.seek(0)
+    global ${globalRenderResultVar}
+    ${globalRenderResultVar} = buf.read()
+    matplotlib.pyplot.clf()
+
+matplotlib.pyplot.show = show
+`;
+
+const testPlot = `import matplotlib
+import numpy as np
+import matplotlib.cm as cm
+from matplotlib import pyplot as plt
+delta = 0.025
+x = y = np.arange(-3.0, 3.0, delta)
+X, Y = np.meshgrid(x, y)
+Z1 = np.exp(-(X**2) - Y**2)
+Z2 = np.exp(-((X - 1) ** 2) - (Y - 1) ** 2)
+Z = (Z1 - Z2) * 2
+plt.figure()
+plt.imshow(
+Z,
+interpolation="bilinear",
+cmap=cm.RdYlGn,
+origin="lower",
+extent=[-3, 3, -3, 3],
+vmax=abs(Z).max(),
+vmin=-abs(Z).max(),
+)
+plt.show()`;
+
 let inputBufferArray: Int32Array;
 PyodideLoader.getPyodide().then(async (pyodide) => {
+  await PyodideLoader.pyodide.loadPackage("micropip");
+  const micropip = PyodideLoader.pyodide.pyimport("micropip");
+  await micropip.install("matplotlib");
+  await pyodide.runPythonAsync(patchMatplotlibShow);
 
   globalThis.postMessage({ value: { ready: true, language: "python" }, id: "", type: "system" });
 
@@ -112,6 +163,30 @@ PyodideLoader.getPyodide().then(async (pyodide) => {
         }
 
         await pyodide.runPythonAsync(ev.data.value.code);
+
+        const plotBufferProxy: PyBuffer = pyodide.globals.get(globalRenderResultVar);
+        const plotBufferView: PyBufferView = plotBufferProxy.getBuffer();
+        console.log('plot buffer len', plotBufferView.nbytes);
+        if (plotBufferView.nbytes > 0) {
+          // called `plt.show()`
+          const resultData = plotBufferProxy.toJs();
+          globalThis.postMessage({
+            id: ev.data.id,
+            value: {
+              type: "plot_show",
+              data: resultData
+            },
+            type: "system"
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+          }, [resultData.buffer]);
+
+          plotBufferProxy.destroy();
+          plotBufferView.release();
+
+          // TODO: 有没有更好的办法重置缓冲区
+          await pyodide.runPythonAsync(`${globalRenderResultVar} = b''`);
+        }
         const postSysMessage = {
           id: ev.data.id,
           err: null,

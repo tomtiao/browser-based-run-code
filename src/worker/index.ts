@@ -105,7 +105,7 @@ class WorkerManager {
 
 export const workerManager = WorkerManager.instance();
 // preload worker
-workerManager.getWorker("cpp");
+// workerManager.getWorker("cpp");
 workerManager.getWorker("python");
 
 type Loader = {
@@ -128,6 +128,18 @@ export const languageCompileOptionMap = {
   python: false,
   cpp: true,
   c: true
+} as const;
+
+export const languageLabelMap = {
+  python: "Python",
+  cpp: "C++",
+  c: "C"
+} as const;
+
+export const languageOutputTypeMap = {
+  python: "image",
+  cpp: "canvas",
+  c: "canvas"
 } as const;
 
 type MessagePayloadType =

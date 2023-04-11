@@ -158,14 +158,38 @@ const emception = new Emception();
 globalThis.emception = emception;
 /* eslint-enable */
 
+const programExecutor = new Worker(
+    new URL("./cpp-program-executor.ts", import.meta.url),
+    { type: "module" }
+);
+
+globalThis.addEventListener("message", function initCanvas(ev: MessageEvent<MessagePayload<{ type: "set_canvas", data: OffscreenCanvas; }>>) {
+    if (ev.data && ev.data.type === "system" && ev.data.value && ev.data.value.type && ev.data.value.type === "set_canvas") {
+        globalThis.removeEventListener("message", initCanvas);
+
+        const message: MessagePayload<{ type: "set_canvas", data: OffscreenCanvas; }> = {
+            id: "",
+            type: "system",
+            value: {
+                type: "set_canvas",
+                data: ev.data.value.data
+            },
+            err: null
+        };
+        programExecutor.postMessage(message, [ev.data.value.data]);
+    }
+});
+
+programExecutor.addEventListener("message", handleExecutorPrint);
+programExecutor.addEventListener("message", handleExecutorExit);
+
 const createHandler = (language: "c" | "cpp", moduleName: string) => {
     return async (ev: MessageEvent<MessagePayload<{ language: string; code: string; compileOption?: string; }>>) => {
         if (ev.data && ev.data.type === "system" && ev.data.value && ev.data.value.code && ev.data.value.language === language) {
             try {
-                /* eslint-disable */
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-ignore
                 await emception.fileSystem.writeFile(`/working/main.${language}`, ev.data.value.code);
-                /* eslint-enable */
             } catch (error) {
                 const message: MessagePayload<null> = {
                     id: ev.data.id,
@@ -180,7 +204,7 @@ const createHandler = (language: "c" | "cpp", moduleName: string) => {
     
             const compilerEntry = language === "c" ? "emcc" : "em++";
             const customOption = ev.data.value.compileOption ?? "";
-            const cmd = `${compilerEntry} ${customOption} main.${language} -sMODULARIZE -sEXPORT_NAME=${moduleName} -o main.js`;
+            const cmd = `${compilerEntry} ${customOption} main.${language} -sMODULARIZE -sEXPORT_NAME=${moduleName} -sHEADLESS -o main.js`;
             console.log(cmd);
     
             {
@@ -211,16 +235,10 @@ const createHandler = (language: "c" | "cpp", moduleName: string) => {
             }
 
             try {
-                const programExecutor = new Worker(
-                    new URL("./cpp-program-executor.ts", import.meta.url),
-                    { type: "module" }
-                );
-
                 {
-                    /* eslint-disable */
+                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                     // @ts-ignore
                     const javascriptFile: Uint8Array = await emception.fileSystem.readFile("/working/main.js");
-                    /* eslint-enable */
     
                     const loadJsMessage: MessagePayload<RunProgramMessage<Uint8Array>> = {
                         id: ev.data.id,
@@ -235,13 +253,20 @@ const createHandler = (language: "c" | "cpp", moduleName: string) => {
                         type: "system"
                     };
                     programExecutor.postMessage(loadJsMessage, [javascriptFile.buffer]);
+                    await new Promise<void>((resolve) => {
+                        programExecutor.addEventListener("message", function f(ev: MessageEvent<MessagePayload<{ type: "loaded" }>>) {
+                            if (ev.data && ev.data.type === "system" && ev.data.value && ev.data.value.type && ev.data.value.type === "loaded") {
+                                programExecutor.removeEventListener("message", f);
+                                resolve();
+                            }
+                        });
+                    });
                 }
 
                 {
-                    /* eslint-disable */
+                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                     // @ts-ignore
                     const wasmBuffer: Uint8Array = await emception.fileSystem.readFile("/working/main.wasm");
-                    /* eslint-enable */
 
                     const loadWasmMessage: MessagePayload<RunProgramMessage<Uint8Array>> = {
                         id: ev.data.id,
@@ -256,6 +281,15 @@ const createHandler = (language: "c" | "cpp", moduleName: string) => {
                         type: "system"
                     };
                     programExecutor.postMessage(loadWasmMessage, [wasmBuffer.buffer]);
+
+                    await new Promise<void>((resolve) => {
+                        programExecutor.addEventListener("message", function f(ev: MessageEvent<MessagePayload<{ type: "loaded" }>>) {
+                            if (ev.data && ev.data.type === "system" && ev.data.value && ev.data.value.type && ev.data.value.type === "loaded") {
+                                programExecutor.removeEventListener("message", f);
+                                resolve();
+                            }
+                        });
+                    });
                 }
 
                 {
@@ -269,9 +303,6 @@ const createHandler = (language: "c" | "cpp", moduleName: string) => {
                     };
                     globalThis.postMessage(message);
                 }
-
-                programExecutor.addEventListener("message", handleExecutorPrint);
-                programExecutor.addEventListener("message", handleExecutorExit);
 
                 {
                     const executeMessage: MessagePayload<RunProgramMessage> = {
@@ -313,7 +344,7 @@ function handleExecutorPrint(ev: MessageEvent<MessagePayload<string>>) {
 
 // we just do delegation
 function handleExecutorExit(ev: MessageEvent<MessagePayload<{ stage: "exit" }>>) {
-    if (ev.data && ev.data.type === "system") {
+    if (ev.data && ev.data.type === "system" && ev.data.value && ev.data.value.stage === "exit") {
         globalThis.postMessage(ev.data);
     }
 }

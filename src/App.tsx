@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useId, useState } from "react";
-import { Spinner, Body1Stronger } from "@fluentui/react-components";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Spinner, PresenceBadge, Subtitle2, Title3 } from "@fluentui/react-components";
 
-import { MessagePayload, SupportedLanguage, languageCompileOptionMap, supportedLanguageMap } from "./worker";
+import { MessagePayload, SupportedLanguage, languageCompileOptionMap, languageOutputTypeMap, supportedLanguageMap } from "./worker";
 import Editor from "./components/Editor";
-import Preview from "./components/Preview";
+import Preview, { PreviewOutputType } from "./components/Preview";
 
 import { workerManager } from "./worker";
 
@@ -11,7 +11,7 @@ import "./App.css";
 
 type AppState =
   | "idle"
-  | "loading"
+  | "loadingModule"
   | "compiling"
   | "running"
 
@@ -20,14 +20,15 @@ function App() {
 
   const [language, setLanguage] = useState<SupportedLanguage>("python");
   const [compileOption, setCompileOption] = useState("-O0");
-  const [worker, setWorker] = useState<Worker | null>(null);
   const [currentState, setCurrentState] = useState<AppState>("idle");
 
   const [output, setOutput] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
 
+  const [worker, setWorker] = useState<Worker | null>(null);
+
   useEffect(() => {
-    setCurrentState("loading");
+    setCurrentState("loadingModule");
 
     let dropped = false;
     (async () => {
@@ -41,6 +42,30 @@ function App() {
         if (!dropped) {
           setWorker(worker!);
           console.log(language, "loaded");
+
+          set_canvas: {
+            if (offscreenCanvasRef.current.inited) {
+              break set_canvas;
+            }
+            if (languageOutputTypeMap[language] !== "canvas") {
+              break set_canvas;
+            }
+        
+            const offscreenCanvas = offscreenCanvasRef.current.canvas!;
+            const message: MessagePayload<{ type: "set_canvas", data: OffscreenCanvas; }> = {
+              id: "",
+              type: "system",
+              value: {
+                type: "set_canvas",
+                data: offscreenCanvas
+              },
+              err: null
+            };
+            worker!.postMessage(message, [offscreenCanvas]);
+        
+            offscreenCanvasRef.current.inited = true;
+          }
+
           setCurrentState("idle");
         }
       }
@@ -57,6 +82,7 @@ function App() {
     }
 
     let dropped = false;
+    let url = "";
     const handleMessage = (ev: MessageEvent<MessagePayload<any>>) => {
       if (dropped) {
         return;
@@ -66,7 +92,7 @@ function App() {
           setCurrentState("idle");
           console.error(ev.data.id, "\n", ev.data.err);
           const errMessage = ev.data.err.message;
-          setOutput((output) => output + errMessage);
+          setOutput((output) => output + '\n' + errMessage);
           return;
         }
 
@@ -98,6 +124,12 @@ function App() {
 
                 workerManager.responseWorkerInput(worker, s);
               } break;
+              case "plot_show": {
+                url = URL.createObjectURL(
+                  new Blob([ev.data.value.data.buffer], { type: "image/png" })
+                );
+                setPreviewUrl(url);
+              } break;
             }
           }
         }
@@ -108,6 +140,9 @@ function App() {
     return () => {
       dropped = true;
       worker.removeEventListener("message", handleMessage);
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
     };
   }, [worker]);
 
@@ -115,6 +150,9 @@ function App() {
 
   const handleRunCode = useCallback(
     async (code: string) => {
+      if (currentState !== "idle") {
+        return;
+      }
       if (!worker) {
         console.warn("no worker available, will not run code");
         return;
@@ -132,7 +170,7 @@ function App() {
       };
       worker.postMessage(message);
     },
-    [worker, language, id, hasCompileOption, compileOption]
+    [worker, currentState, language, id, hasCompileOption, compileOption]
   );
 
   const handleLanguageChange = (newLanguage: string) => {
@@ -148,7 +186,7 @@ function App() {
   };
 
   const currentStatus = (
-    currentState === "loading"
+    currentState === "loadingModule"
       ? "加载中…"
       : (
         currentState === "compiling"
@@ -156,15 +194,28 @@ function App() {
           : (
             currentState === "running"
               ? "运行中…"
-              : "空闲"
+              : "就绪"
           )
       )
   );
 
+  const outputType: PreviewOutputType = [
+    "string",
+    languageOutputTypeMap[language]
+  ];
+
+  const offscreenCanvasRef = useRef<{ canvas: OffscreenCanvas | null; inited: boolean; }>({ canvas: null, inited: false });
+  const handleCanvasReady = (canvas: HTMLCanvasElement) => {
+    if (offscreenCanvasRef.current.canvas === null) {
+      const offscreenCanvas = canvas.transferControlToOffscreen();
+      offscreenCanvasRef.current.canvas = offscreenCanvas;
+    }
+  };
+
   return (
     <div className="app-wrapper">
       <nav className="navigation">
-        <span>应用执行</span>
+        <Title3>应用执行</Title3>
       </nav>
       <main className="content-wrapper">
         <div className="editor-status">
@@ -184,7 +235,12 @@ function App() {
           <div className="status">
             {
               currentState === "idle"
-              ? <Body1Stronger align="center">{currentStatus}</Body1Stronger>
+              ? (
+                <>
+                  <PresenceBadge size="large" className="indicator" />
+                  <Subtitle2 align="center">{currentStatus}</Subtitle2>
+                </>
+              )
               : (
                 <Spinner appearance="primary" label={currentStatus} />
               )
@@ -192,10 +248,12 @@ function App() {
           </div>
         </div>
         <div className="preview-wrapper">
-          <Preview output={output} />
-        </div>
-        <div className="image-preview">
-          
+          <Preview
+            outputType={outputType}
+            output={output}
+            previewImageUrl={previewUrl}
+            onCanvasReady={handleCanvasReady}
+          />
         </div>
       </main>
     </div>

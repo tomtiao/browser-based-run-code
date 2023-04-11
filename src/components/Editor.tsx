@@ -9,12 +9,32 @@ import {
 
 import { Button, Dropdown, DropdownProps, Input, Label, Option, Body1Stronger } from "@fluentui/react-components";
 
-import { throttle } from "../utils";
-
 import "./Editor.css";
+import { SupportedLanguage, languageLabelMap } from "../worker";
 
 const prefilled = {
-  python: ["def x():", '\tprint("Hello world!")', 'x()'].join("\n"),
+  // python: ["def x():", '\tprint("Hello world!")', 'x()'].join("\n"),
+  python: `import matplotlib
+import numpy as np
+import matplotlib.cm as cm
+from matplotlib import pyplot as plt
+delta = 0.025
+x = y = np.arange(-3.0, 3.0, delta)
+X, Y = np.meshgrid(x, y)
+Z1 = np.exp(-(X**2) - Y**2)
+Z2 = np.exp(-((X - 1) ** 2) - (Y - 1) ** 2)
+Z = (Z1 - Z2) * 2
+plt.figure()
+plt.imshow(
+Z,
+interpolation="bilinear",
+cmap=cm.RdYlGn,
+origin="lower",
+extent=[-3, 3, -3, 3],
+vmax=abs(Z).max(),
+vmin=-abs(Z).max(),
+)
+plt.show()`,
   cpp: [
     "#include <iostream>",
     "",
@@ -33,7 +53,7 @@ const prefilled = {
 
 const options = {
   model: monaco.editor.createModel(
-    ["def x():", '\tprint("Hello world!")', 'x()'].join("\n"),
+    prefilled.python,
     "python"
   ),
   theme: "vs-dark",
@@ -61,18 +81,23 @@ function Editor({
   const divRef = useRef<HTMLDivElement | null>(null);
   const [editorInstance] = useEditor(divRef, options);
 
+  const editorLayoutRef = useRef<ReturnType<typeof window['requestAnimationFrame']> | null>(null);
+
   useEffect(() => {
     if (!editorInstance) {
       return;
     }
 
-    const handleResize = () => {
+    editorLayoutRef.current = requestAnimationFrame(function f() {
       editorInstance.layout();
-    };
-    window.addEventListener("resize", handleResize);
+      editorLayoutRef.current = requestAnimationFrame(f);
+    })
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      if (!editorLayoutRef.current) {
+        return;
+      }
+      cancelAnimationFrame(editorLayoutRef.current);
     };
   }, [editorInstance]);
 
@@ -95,8 +120,8 @@ function Editor({
 
   const runButtonString = (
     hasCompileOption
-    ? "编译并执行"
-    : "执行"
+      ? "编译并执行"
+      : "执行"
   );
 
   return (
@@ -110,32 +135,32 @@ function Editor({
             <Dropdown
               name="language-select"
               onOptionSelect={handleLanguageChange}
-              value={currentLanguage}
+              value={languageLabelMap[currentLanguage as SupportedLanguage]}
               title="选择语言"
             >
               {Object.entries(supportedLanguageMap).map(([languageType]) => (
-                <Option value={languageType} key={languageType}>{languageType}</Option>
+                <Option value={languageType} key={languageType}>{languageLabelMap[languageType as SupportedLanguage]}</Option>
               ))}
             </Dropdown>
           </div>
         </div>
         {
           hasCompileOption
-          ? (
-            <div className="line">
-              <div className="compiler-option-wrapper">
-                <Label htmlFor="compiler-option-input" className="option-label">
-                  <Body1Stronger>编译选项</Body1Stronger>
-                </Label>
-                <Input
-                  type="text"
-                  id="compiler-option-input"
-                  onChange={handleOptionInputChange}
-                  value={compileOption}
-                />
+            && (
+              <div className="line">
+                <div className="compiler-option-wrapper">
+                  <Label htmlFor="compiler-option-input" className="option-label">
+                    <Body1Stronger>编译选项</Body1Stronger>
+                  </Label>
+                  <Input
+                    type="text"
+                    id="compiler-option-input"
+                    onChange={handleOptionInputChange}
+                    value={compileOption}
+                  />
+                </div>
               </div>
-            </div>
-          ) : null
+            )
         }
         <Button onClick={handleClick} appearance="primary" disabled={!ready}>{runButtonString}</Button>
       </div>

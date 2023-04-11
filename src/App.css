@@ -60,6 +60,10 @@ html, body, .fluentUI-root {
     min-height: 50px;
 }
 
+.indicator {
+    margin-right: 0.25em;
+}
+
 .preview-wrapper {
     box-sizing: border-box;
 

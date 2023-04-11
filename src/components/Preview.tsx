@@ -1,4 +1,4 @@
-import { type RefObject, useRef, useEffect } from "react";
+import { type RefObject, useRef, useEffect, useCallback } from "react";
 
 import { type ITerminalInitOnlyOptions, type ITerminalOptions, Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
@@ -6,7 +6,7 @@ import { WebglAddon } from "xterm-addon-webgl";
 import { CanvasAddon } from "xterm-addon-canvas";
 import "xterm/css/xterm.css";
 
-import { throttle } from "../utils";
+import { Image } from "@fluentui/react-components";
 
 import "./Preview.css";
 
@@ -16,15 +16,35 @@ const options: ITerminalOptions & ITerminalInitOnlyOptions = {
         background: "#1e1e1e",
         foreground: "#d4d4d4",
     },
-}
+};
+
+const canvasOptions = {
+    width: 640,
+    height: 480
+};
+
+export type PreviewOutputType = ("string" | "canvas" | "image")[];
 
 const Preview = ({
-    output = ""
+    output = "",
+    previewImageUrl = "",
+    outputType = ["string"],
+    onCanvasReady
 }: {
     output?: string;
+    previewImageUrl?: string;
+    outputType?: PreviewOutputType;
+    onCanvasReady?: (canvas: HTMLCanvasElement) => void;
 }) => {
     const divRef = useRef<HTMLDivElement | null>(null);
     const [terminalInstance, fitAddonInstance] = useTerminal(divRef, options);
+
+    const canvasMeasuredRef = useCallback((canvas: HTMLCanvasElement) => {
+        if (canvas !== null) {
+            onCanvasReady?.(canvas);
+        }
+    }, [onCanvasReady]);
+    const [canvas] = useCanvas(canvasMeasuredRef, canvasOptions);
 
     useEffect(() => {
         if (!terminalInstance || !fitAddonInstance) {
@@ -52,7 +72,21 @@ const Preview = ({
 
     return (
         <div className="preview">
-            <div className="text-output" ref={divRef} />
+            {outputType.includes("string") && <div className="text-output" ref={divRef} key="text-output" />}
+            {
+                outputType.includes("canvas") && (
+                    <div className="graph-output-canvas" key="graph-output-canvas">
+                        {canvas}
+                    </div>
+                )
+            }
+            {
+                outputType.includes("image") && (
+                    <div className="graph-output-image">
+                        <Image src={previewImageUrl} />
+                    </div>
+                )
+            }
         </div>
     )
 };
@@ -77,7 +111,7 @@ const useTerminal = (
 
         try {
             const webglAddon = new WebglAddon();
-            
+
             // handle WebGL context loss
             webglAddon.onContextLoss(() => {
                 webglAddon.dispose();
@@ -93,5 +127,19 @@ const useTerminal = (
 
     return [terminalRef.current, terminalFitAddonRef.current];
 }
+
+const useCanvas = (
+    measuredRef: (canvas: HTMLCanvasElement) => void,
+    options: { width?: number; height?: number; } = {}
+) => {
+    const { width = 400, height = 300 } = options;
+    return [(
+        <canvas
+            width={width}
+            height={height}
+            ref={measuredRef}
+        />
+    )];
+};
 
 export default Preview;
