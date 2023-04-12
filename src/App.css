@@ -8,6 +8,8 @@ html, body, .fluentUI-root {
 #root {
     box-sizing: border-box;
     height: 100%;
+
+    background-color: #ebebeb;
 }
 
 .app-wrapper {
@@ -21,7 +23,7 @@ html, body, .fluentUI-root {
 
 .navigation {
     min-height: 54px;
-    background-color: #4f52b2;
+    background-color: #5b5fc7;
     color: #fff;
     display: flex;
     align-items: center;
