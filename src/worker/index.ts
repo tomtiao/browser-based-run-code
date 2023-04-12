@@ -95,8 +95,15 @@ class WorkerManager {
     // Int32Array的第一个位置存放输入长度`x`（小于`MAX_INPUT_BUFFER_SIZE-1`），
     // 后`x`项是字符串数据，剩余项未定义
 
+    const rawUint8Data = new TextEncoder().encode(inputStrSlice);
+    // 如果不能用四字节表示，在末尾填充`0`
+    const padLength = ((Math.trunc(rawUint8Data.byteLength / 4)) + 1) * 4;
+    const padUint8Data = new Uint8Array(padLength);
+    padUint8Data.set(rawUint8Data);
+    const int32View = new Int32Array(padUint8Data.buffer);
+
     typedArray[0] = inputStrSlice.length;
-    typedArray.set(new TextEncoder().encode(inputStrSlice), 1);
+    typedArray.set(int32View, 1);
 
     // wake up the thread
     Atomics.notify(typedArray, 0);

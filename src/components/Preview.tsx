@@ -19,8 +19,8 @@ const options: ITerminalOptions & ITerminalInitOnlyOptions = {
 };
 
 const canvasOptions = {
-    width: 640,
-    height: 480
+    width: 300,
+    height: 300
 };
 
 export type PreviewOutputType = ("string" | "canvas" | "image")[];
@@ -46,18 +46,22 @@ const Preview = ({
     }, [onCanvasReady]);
     const [canvas] = useCanvas(canvasMeasuredRef, canvasOptions);
 
+    const fitRef = useRef<ReturnType<typeof window['requestAnimationFrame']> | null>(null);
     useEffect(() => {
         if (!terminalInstance || !fitAddonInstance) {
             return;
         }
 
-        const handleResize = () => {
-            fitAddonInstance.fit()
-        };
-        window.addEventListener("resize", handleResize);
+        fitRef.current = requestAnimationFrame(function fitTerminal() {
+            fitAddonInstance.fit();
+            requestAnimationFrame(fitTerminal);
+        });
 
         return () => {
-            window.removeEventListener("resize", handleResize);
+            if (!fitRef.current) {
+                return;
+            }
+            cancelAnimationFrame(fitRef.current);
         };
     }, [terminalInstance, fitAddonInstance]);
 
@@ -75,15 +79,15 @@ const Preview = ({
             {outputType.includes("string") && <div className="text-output" ref={divRef} key="text-output" />}
             {
                 outputType.includes("canvas") && (
-                    <div className="graph-output-canvas" key="graph-output-canvas">
+                    <div className="graph-output-canvas graph-output" key="graph-output-canvas">
                         {canvas}
                     </div>
                 )
             }
             {
                 outputType.includes("image") && (
-                    <div className="graph-output-image">
-                        <Image src={previewImageUrl} />
+                    <div className="graph-output-image graph-output">
+                        <Image src={previewImageUrl} className="output-image" />
                     </div>
                 )
             }

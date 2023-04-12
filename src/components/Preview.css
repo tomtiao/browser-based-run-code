@@ -10,4 +10,32 @@
 
 .text-output {
     flex: 1 1 0%;
+    max-height: 50%;
+}
+
+.output-image {
+    width: 100%;
+    object-fit: scale-down;
+}
+
+.graph-output {
+    margin: 0 auto;
+
+    display: flex;
+    align-items: center;
+}
+
+@media (min-width: 750px) {
+    .preview {
+        flex-direction: row;
+    }
+
+    .text-output {
+        max-width: 50%;
+        max-height: unset;
+    }
+
+    .graph-output {
+        max-width: 50%;
+    }
 }

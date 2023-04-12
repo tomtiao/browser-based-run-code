@@ -88,10 +88,10 @@ function Editor({
       return;
     }
 
-    editorLayoutRef.current = requestAnimationFrame(function f() {
+    editorLayoutRef.current = requestAnimationFrame(function layoutEditor() {
       editorInstance.layout();
-      editorLayoutRef.current = requestAnimationFrame(f);
-    })
+      editorLayoutRef.current = requestAnimationFrame(layoutEditor);
+    });
 
     return () => {
       if (!editorLayoutRef.current) {

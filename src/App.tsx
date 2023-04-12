@@ -215,7 +215,7 @@ function App() {
   return (
     <div className="app-wrapper">
       <nav className="navigation">
-        <Title3>应用执行</Title3>
+        <Title3 className="page-title">应用执行</Title3>
       </nav>
       <main className="content-wrapper">
         <div className="editor-status">

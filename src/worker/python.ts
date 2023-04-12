@@ -125,8 +125,9 @@ PyodideLoader.getPyodide().then(async (pyodide) => {
               }
               // read the input buffer
               const len = inputBufferArray[0];
-              const inputStrData = inputBufferArray.slice(1, len + 1);
-              const inputStr = new TextDecoder().decode(inputStrData);
+              // restore data as uint8array
+              const uint8InputStrDataView = new Uint8Array(inputBufferArray.buffer, 4);
+              const inputStr = new TextDecoder().decode(uint8InputStrDataView.slice(0, len));
 
               // mark input as clean
               inputBufferArray[0] = 0;

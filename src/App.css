@@ -20,7 +20,15 @@ html, body, .fluentUI-root {
 }
 
 .navigation {
-    height: 40px;
+    min-height: 54px;
+    background-color: #4f52b2;
+    color: #fff;
+    display: flex;
+    align-items: center;
+}
+
+.page-title {
+    margin-left: 0.5em;
 }
 
 .content-wrapper {
