@@ -34,15 +34,13 @@ const Preview = ({
     output?: string;
     previewImageUrl?: string;
     outputType?: PreviewOutputType;
-    onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+    onCanvasReady?: (canvas: HTMLCanvasElement | null) => void;
 }) => {
     const divRef = useRef<HTMLDivElement | null>(null);
     const [terminalInstance, fitAddonInstance] = useTerminal(divRef, options);
 
-    const canvasMeasuredRef = useCallback((canvas: HTMLCanvasElement) => {
-        if (canvas !== null) {
-            onCanvasReady?.(canvas);
-        }
+    const canvasMeasuredRef = useCallback((canvas: HTMLCanvasElement | null) => {
+        onCanvasReady?.(canvas);
     }, [onCanvasReady]);
     const [canvas] = useCanvas(canvasMeasuredRef, canvasOptions);
 
@@ -76,14 +74,13 @@ const Preview = ({
 
     return (
         <div className="preview">
-            {outputType.includes("string") && <div className="text-output" ref={divRef} key="text-output" />}
-            {
-                outputType.includes("canvas") && (
-                    <div className="graph-output-canvas graph-output" key="graph-output-canvas">
-                        {canvas}
-                    </div>
-                )
-            }
+            {outputType.includes("string") && <div className="text-output" ref={divRef} />}
+            <div
+                className="graph-output-canvas graph-output"
+                style={{ display: outputType.includes("canvas") ? "inherit" : "none" }}
+            >
+                {canvas}
+            </div>
             {
                 outputType.includes("image") && (
                     <div className="graph-output-image graph-output">
@@ -139,6 +136,7 @@ const useCanvas = (
     const { width = 400, height = 300 } = options;
     return [(
         <canvas
+            key="canvas"
             width={width}
             height={height}
             ref={measuredRef}

@@ -51,7 +51,7 @@ function App() {
               break set_canvas;
             }
         
-            const offscreenCanvas = offscreenCanvasRef.current.canvas!;
+            const offscreenCanvas = offscreenCanvasRef.current.offscreenCanvas!;
             const message: MessagePayload<{ type: "set_canvas", data: OffscreenCanvas; }> = {
               id: "",
               type: "system",
@@ -204,11 +204,29 @@ function App() {
     languageOutputTypeMap[language]
   ];
 
-  const offscreenCanvasRef = useRef<{ canvas: OffscreenCanvas | null; inited: boolean; }>({ canvas: null, inited: false });
-  const handleCanvasReady = (canvas: HTMLCanvasElement) => {
-    if (offscreenCanvasRef.current.canvas === null) {
+  const offscreenCanvasRef = useRef<{
+    offscreenCanvas: OffscreenCanvas | null;
+    canvas: HTMLCanvasElement | null;
+    inited: boolean;
+  }>({
+    offscreenCanvas: null,
+    canvas: null,
+    inited: false
+  });
+  const handleCanvasReady = (canvas: HTMLCanvasElement | null) => {
+    if (!canvas) {
+      // canvas unmounted
+      offscreenCanvasRef.current.offscreenCanvas === null;
+      offscreenCanvasRef.current.canvas === null;
+      offscreenCanvasRef.current.inited === false;
+      return;
+    }
+
+    // prevent re-transfer control
+    if (offscreenCanvasRef.current.canvas !== canvas) {
       const offscreenCanvas = canvas.transferControlToOffscreen();
-      offscreenCanvasRef.current.canvas = offscreenCanvas;
+      offscreenCanvasRef.current.canvas = canvas;
+      offscreenCanvasRef.current.offscreenCanvas = offscreenCanvas;
     }
   };
 
